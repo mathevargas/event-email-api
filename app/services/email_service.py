@@ -29,7 +29,8 @@ class EmailService:
 
     def enviar_email_html(self, dto: EnviarEmailDTO):
 
-        html = TemplateUtils.render_email(
+        html = TemplateUtils.render(
+            "email_template.html",
             nome="Participante",
             assunto=dto.assunto,
             mensagem=dto.mensagem
