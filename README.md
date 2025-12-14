@@ -1,35 +1,38 @@
-EMAIL API — Serviço de Envio Básico de E-mails (Python + FastAPI)
+EMAIL API — Serviço de Notificações por E-mail (HTML Templates + SMTP) — Python + FastAPI
 
-Este microserviço é responsável por enviar e-mails simples utilizando parâmetros enviados via API.
-Faz parte da arquitetura de microserviços do Sistema de Eventos.
+Este microserviço é responsável por enviar e-mails reais do Sistema de Eventos via SMTP, suportando envio em texto e em HTML com templates (Jinja2).
+Ele é acionado principalmente pelo backend (ex.: Events API) para notificar ações como inscrição, cancelamento e check-in/presença.
 
-1. Objetivo
+1) Objetivo
 
-Permitir o envio básico de e-mails:
+Disponibilizar um serviço centralizado para envio de e-mails:
 
-Receber dados via DTO
+Enviar e-mail texto (simples)
 
-Criar um objeto EmailModel
+Enviar e-mail HTML usando templates
 
-Retornar resposta JSON após processamento
+Padronizar comunicação com o usuário (notificações do sistema)
 
-Estrutura modular (Controller → DTO → Service → Model)
+Manter estrutura modular:
 
-A parte avançada (HTML template, SMTP real, autenticação) será implementada posteriormente.
+Controller → DTO → Service → Template → SMTP
 
-2. Tecnologias Utilizadas
-Tecnologia	Finalidade
-Python 3.10+	Linguagem
-FastAPI	Backend REST
-Pydantic	Validação de DTOs
-Uvicorn	Servidor ASGI
-Jinja2 (posterior)	Templates HTML
-SMTP real (posterior)	Envio real de e-mails
+2) Tecnologias Utilizadas
 
-Importante: nesta fase inicial não há envio real de e-mails.
+Python 3.10+ — linguagem
 
-3. Estrutura do Projeto
-EMAIL-API-PYTHON/
+FastAPI — API REST
+
+Uvicorn — servidor ASGI
+
+Pydantic — validação de DTOs
+
+Jinja2 — renderização de templates HTML
+
+SMTP (Gmail/Outlook/Servidor SMTP) — envio real de e-mail
+
+3) Estrutura do Projeto
+email-api-python/
 │
 ├── app/
 │   ├── controllers/
@@ -39,156 +42,426 @@ EMAIL-API-PYTHON/
 │   ├── models/
 │   │     └── email_model.py
 │   ├── services/
-│   │     └── email_service.py
-│   ├── templates/          (não utilizado nesta fase)
-│   └── utils/              (não utilizado nesta fase)
+│   │     ├── email_service.py
+│   │     └── smtp_service.py
+│   ├── templates/
+│   │     ├── email_template.html
+│   │     ├── inscricao_confirmada.html
+│   │     ├── cancelamento_inscricao.html
+│   │     └── checkin_confirmado.html
+│   └── utils/
+│         └── template_utils.py
 │
-├── main.py
+├── app/main.py   (ou main.py, conforme seu projeto)
 └── README.md
 
-4. Fluxo de Envio de E-mail (fase atual)
+
+Observação: o nome exato do arquivo de entrada pode ser main.py na raiz ou app/main.py. O importante é o comando do Uvicorn apontar para o app.
+
+4) Funcionamento (fluxo de envio)
+4.1 E-mail texto
 
 Controller recebe o DTO
 
-DTO valida os campos obrigatórios
+DTO valida destinatario, assunto, mensagem
 
-Serviço processa os dados
+Service cria EmailModel
 
-Retorna resposta JSON para o cliente
+SMTPService envia com html=False
 
-Nesta etapa não há integração SMTP nem HTML template.
+API retorna JSON confirmando envio
 
-5. Endpoints
-5.1 Enviar e-mail simples
+4.2 E-mail HTML (template)
+
+Controller recebe o DTO
+
+Service escolhe o template correto (ex.: inscrição/cancelamento/check-in)
+
+TemplateUtils.render() injeta variáveis no HTML (ex.: nome, evento, data, local)
+
+SMTPService envia com html=True
+
+API retorna JSON confirmando envio
+
+5) Templates HTML suportados
+
+Templates (Jinja2) usados para padronização:
+
+inscricao_confirmada.html
+
+cancelamento_inscricao.html
+
+checkin_confirmado.html
+
+email_template.html (genérico)
+
+Cada template usa variáveis como:
+
+{{ nome }}
+
+{{ evento }}
+
+{{ data }} (quando aplicável)
+
+{{ local }} (quando aplicável)
+
+{{ assunto }} / {{ mensagem }} (no template genérico)
+
+6) Endpoints
+
+Os nomes abaixo seguem o padrão mais comum; ajuste se no seu email_controller.py estiver diferente.
+
+6.1 Enviar e-mail texto
 
 POST /emails/enviar
 
-Request:
+Body:
 
 {
   "destinatario": "usuario@email.com",
   "assunto": "Confirmação",
-  "mensagem": "Inscrição realizada com sucesso."
+  "mensagem": "Sua inscrição foi confirmada."
 }
 
 
-Response:
+Resposta (exemplo):
+
+{
+  "status": "ok",
+  "tipo": "texto",
+  "destinatario": "usuario@email.com"
+}
+
+6.2 Enviar e-mail HTML (template)
+
+POST /emails/enviar-html
+
+Body:
+
+{
+  "destinatario": "usuario@email.com",
+  "assunto": "Inscrição confirmada",
+  "mensagem": "Workshop de Microsserviços"
+}
+
+
+Resposta (exemplo):
+
+{
+  "status": "ok",
+  "tipo": "html",
+  "destinatario": "usuario@email.com"
+}
+
+
+Importante: para e-mails de inscrição/cancelamento/check-in, o ideal é o backend (Events API) enviar também os campos nome, evento, data, local (se o seu DTO suportar), ou então o Email API montar isso baseado em um “tipo de template”.
+Se hoje o DTO tem só destinatario/assunto/mensagem, o HTML vai ser montado com dados genéricos (ex.: nome="Participante").
+
+7) Integração no Sistema de Eventos
+
+Normalmente, quem chama o Email API é a Events API, por exemplo quando:
+
+Inscrição confirmada → envia inscricao_confirmada.html
+
+Cancelamento de inscrição → envia cancelamento_inscricao.html
+
+Check-in/presença registrada → envia checkin_confirmado.html
+
+Assim, o portal não precisa disparar e-mails diretamente: ele chama a Events API, e a Events API dispara o e-mail.
+
+8) Segurança
+
+A API pode funcionar sem autenticação durante o MVP.
+
+Em produção/entrega, é comum proteger com:
+
+token interno (header fixo)
+
+JWT (integrado com Auth API)
+
+ou restrição por rede (somente backend acessa)
+
+Hoje: manter simples, mas lembrar que “email API aberta” permite abuso se exposta publicamente.
+
+9) Como executar localmente
+
+Instalar dependências:
+
+pip install fastapi uvicorn jinja2
+
+
+Rodar:
+
+uvicorn app.main:app --reload --port 8003
+
+
+(ou uvicorn main:app --reload --port 8003 conforme seu entrypoint)
+
+Abrir Swagger:
+
+http://localhost:8003/docs
+
+10) Configuração SMTP
+
+O envio real depende de variáveis/configurações usadas no smtp_service.py, como:
+
+Host SMTP (ex.: smtp.gmail.com)
+
+Porta (ex.: 587)
+
+Usuário
+
+Senha / App Password
+
+TLS/SSL
+
+Recomendado: guardar em .env e ler via os.getenv().
+
+11) Status do Microserviço
+
+Envio SMTP real: ✅ OK
+
+Envio em texto: ✅ OK
+
+Envio HTML com templates (Jinja2): ✅ OK
+
+Templates específicos (inscrição/cancelamento/check-in): ✅ OK
+
+Swagger: ✅ OK
+
+12) Desenvolvido por
+
+Matheus Vargas — Email API (FastAPI + SMTP + Templates HTML)EMAIL API — Serviço de Notificações por E-mail (HTML Templates + SMTP) — Python + FastAPI
+
+Este microserviço é responsável por enviar e-mails reais do Sistema de Eventos via SMTP, suportando envio em texto e em HTML com templates (Jinja2).
+Ele é acionado principalmente pelo backend (ex.: Events API) para notificar ações como inscrição, cancelamento e check-in/presença.
+
+1) Objetivo
+
+Disponibilizar um serviço centralizado para envio de e-mails:
+
+Enviar e-mail texto (simples)
+
+Enviar e-mail HTML usando templates
+
+Padronizar comunicação com o usuário (notificações do sistema)
+
+Manter estrutura modular:
+
+Controller → DTO → Service → Template → SMTP
+
+2) Tecnologias Utilizadas
+
+Python 3.10+ — linguagem
+
+FastAPI — API REST
+
+Uvicorn — servidor ASGI
+
+Pydantic — validação de DTOs
+
+Jinja2 — renderização de templates HTML
+
+SMTP (Gmail/Outlook/Servidor SMTP) — envio real de e-mail
+
+3) Estrutura do Projeto
+email-api-python/
+│
+├── app/
+│   ├── controllers/
+│   │     └── email_controller.py
+│   ├── dtos/
+│   │     └── enviar_email_dto.py
+│   ├── models/
+│   │     └── email_model.py
+│   ├── services/
+│   │     ├── email_service.py
+│   │     └── smtp_service.py
+│   ├── templates/
+│   │     ├── email_template.html
+│   │     ├── inscricao_confirmada.html
+│   │     ├── cancelamento_inscricao.html
+│   │     └── checkin_confirmado.html
+│   └── utils/
+│         └── template_utils.py
+│
+├── app/main.py   (ou main.py, conforme seu projeto)
+└── README.md
+
+
+Observação: o nome exato do arquivo de entrada pode ser main.py na raiz ou app/main.py. O importante é o comando do Uvicorn apontar para o app.
+
+4) Funcionamento (fluxo de envio)
+4.1 E-mail texto
+
+Controller recebe o DTO
+
+DTO valida destinatario, assunto, mensagem
+
+Service cria EmailModel
+
+SMTPService envia com html=False
+
+API retorna JSON confirmando envio
+
+4.2 E-mail HTML (template)
+
+Controller recebe o DTO
+
+Service escolhe o template correto (ex.: inscrição/cancelamento/check-in)
+
+TemplateUtils.render() injeta variáveis no HTML (ex.: nome, evento, data, local)
+
+SMTPService envia com html=True
+
+API retorna JSON confirmando envio
+
+5) Templates HTML suportados
+
+Templates (Jinja2) usados para padronização:
+
+inscricao_confirmada.html
+
+cancelamento_inscricao.html
+
+checkin_confirmado.html
+
+email_template.html (genérico)
+
+Cada template usa variáveis como:
+
+{{ nome }}
+
+{{ evento }}
+
+{{ data }} (quando aplicável)
+
+{{ local }} (quando aplicável)
+
+{{ assunto }} / {{ mensagem }} (no template genérico)
+
+6) Endpoints
+
+Os nomes abaixo seguem o padrão mais comum; ajuste se no seu email_controller.py estiver diferente.
+
+6.1 Enviar e-mail texto
+
+POST /emails/enviar
+
+Body:
 
 {
   "destinatario": "usuario@email.com",
   "assunto": "Confirmação",
-  "mensagem": "Inscrição realizada com sucesso.",
-  "status": "Email processado"
+  "mensagem": "Sua inscrição foi confirmada."
 }
 
 
-Retorno pode ser ajustado na fase avançada conforme integrações.
-
-6. Componentes Implementados
-Controller — email_controller.py
-
-Recebe DTO
-
-Chama serviço
-
-Retorna JSON
-
-DTO — enviar_email_dto.py
-
-Validação via Pydantic
-
-Campos obrigatórios:
-
-destinatario
-
-assunto
-
-mensagem
-
-Model — email_model.py
-
-Representação simples do e-mail
-
-Armazena informações básicas
-
-Service — email_service.py
-
-Constrói EmailModel
-
-Simula envio (sem SMTP)
-
-Retorna JSON
-
-7. Segurança (fase atual)
-
-API sem autenticação
-
-Não usa JWT
-
-Não integra com Auth API
-
-Sem perfis
-
-Segurança será aplicada posteriormente pelo time (padrão microserviços).
-
-8. Executando Localmente
-
-Instalar dependências mínimas:
-
-pip install fastapi uvicorn
-
-
-Rodar API:
-
-uvicorn main:app --reload --port 8002
-
-9. Testes via Postman
-
-1️⃣ Enviar e-mail
-
-POST http://127.0.0.1:8002/emails/enviar
-
-
-Body JSON:
+Resposta (exemplo):
 
 {
-  "destinatario": "user@mail.com",
-  "assunto": "Bem-vindo",
-  "mensagem": "Seu registro foi confirmado."
+  "status": "ok",
+  "tipo": "texto",
+  "destinatario": "usuario@email.com"
 }
 
-10. Documentação Swagger
+6.2 Enviar e-mail HTML (template)
 
-Swagger UI:
+POST /emails/enviar-html
+
+Body:
+
+{
+  "destinatario": "usuario@email.com",
+  "assunto": "Inscrição confirmada",
+  "mensagem": "Workshop de Microsserviços"
+}
+
+
+Resposta (exemplo):
+
+{
+  "status": "ok",
+  "tipo": "html",
+  "destinatario": "usuario@email.com"
+}
+
+
+Importante: para e-mails de inscrição/cancelamento/check-in, o ideal é o backend (Events API) enviar também os campos nome, evento, data, local (se o seu DTO suportar), ou então o Email API montar isso baseado em um “tipo de template”.
+Se hoje o DTO tem só destinatario/assunto/mensagem, o HTML vai ser montado com dados genéricos (ex.: nome="Participante").
+
+7) Integração no Sistema de Eventos
+
+Normalmente, quem chama o Email API é a Events API, por exemplo quando:
+
+Inscrição confirmada → envia inscricao_confirmada.html
+
+Cancelamento de inscrição → envia cancelamento_inscricao.html
+
+Check-in/presença registrada → envia checkin_confirmado.html
+
+Assim, o portal não precisa disparar e-mails diretamente: ele chama a Events API, e a Events API dispara o e-mail.
+
+8) Segurança
+
+A API pode funcionar sem autenticação durante o MVP.
+
+Em produção/entrega, é comum proteger com:
+
+token interno (header fixo)
+
+JWT (integrado com Auth API)
+
+ou restrição por rede (somente backend acessa)
+
+Hoje: manter simples, mas lembrar que “email API aberta” permite abuso se exposta publicamente.
+
+9) Como executar localmente
+
+Instalar dependências:
+
+pip install fastapi uvicorn jinja2
+
+
+Rodar:
+
+uvicorn app.main:app --reload --port 8003
+
+
+(ou uvicorn main:app --reload --port 8003 conforme seu entrypoint)
+
+Abrir Swagger:
 
 http://localhost:8002/docs
 
+10) Configuração SMTP
 
-Redoc:
+O envio real depende de variáveis/configurações usadas no smtp_service.py, como:
 
-http://localhost:8002/redoc
+Host SMTP (ex.: smtp.gmail.com)
 
-11. Status do Microserviço
-Feature	Status
-DTO básico	✔️
-Controller básico	✔️
-Model simples	✔️
-Service simples	✔️
-Envio HTML	🔜 EZ
-Template	🔜 EZ
-SMTP real	🔜 MT
-Integração Auth/Events	🔜 posterior
-Segurança	🔜 posterior
-12. Próximas Etapas (EZ)
+Porta (ex.: 587)
 
-Implementar template HTML via Jinja2
+Usuário
 
-Criar serviço de email em HTML
+Senha / App Password
 
-Ajustar respostas do controller
+TLS/SSL
 
-Estrutura para Streaming / anexo
+Recomendado: guardar em .env e ler via os.getenv().
 
-13. Desenvolvido por
+11) Status do Microserviço
 
-Matheus Vargas — Email API (MVP)
+Envio SMTP real: ✅ OK
+
+Envio em texto: ✅ OK
+
+Envio HTML com templates (Jinja2): ✅ OK
+
+Templates específicos (inscrição/cancelamento/check-in): ✅ OK
+
+Swagger: ✅ OK
+
+12) Desenvolvido por
+
+Matheus Vargas — Email API (FastAPI + SMTP + Templates HTML)

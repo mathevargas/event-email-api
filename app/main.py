@@ -1,15 +1,15 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.controllers.email_controller import router as email_router
 from fastapi.openapi.utils import get_openapi
+import time
 
 app = FastAPI(
-    title="Email API",
+    title="EMAIL API",
     version="1.0.0",
-    description="Microserviço de envio de e-mails."
+    description="Microserviço de envio de e-mails do Sistema de Eventos.",
 )
 
-# 🔓 CORS liberado para Portais e outras APIs
 origins = [
     "http://localhost:5500",
     "http://127.0.0.1:5500",
@@ -29,7 +29,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ⬇️ Primeiro inclui as rotas
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+
+    metodo = request.method
+    uri = request.url.path
+    ip = request.client.host if request.client else None
+
+    print(f"📌 LOG API → {metodo} {uri} | IP: {ip}")
+
+    response = await call_next(request)
+
+    ms = int((time.time() - start) * 1000)
+    print(f"✅ RES API → {metodo} {uri} | status: {response.status_code} | {ms}ms")
+
+    return response
+
 app.include_router(email_router)
 
 
@@ -38,7 +55,6 @@ def root():
     return {"message": "Email API is running!"}
 
 
-# 🔐 Swagger com suporte a BearerAuth (JWT)
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -56,15 +72,13 @@ def custom_openapi():
     openapi_schema["components"]["securitySchemes"]["BearerAuth"] = {
         "type": "http",
         "scheme": "bearer",
-        "bearerFormat": "JWT"
+        "bearerFormat": "JWT",
     }
 
-    # 🔒 Exige Auth por padrão em todas rotas (pode sobrescrever no controller)
     openapi_schema["security"] = [{"BearerAuth": []}]
 
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
 
-# ⬅️ Substitui OpenAPI
 app.openapi = custom_openapi

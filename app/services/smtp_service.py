@@ -9,12 +9,11 @@ load_dotenv()
 class SMTPService:
 
     HOST = "smtp.gmail.com"
-    PORT = 465  # SSL
+    PORT = 465  
 
     @staticmethod
     def enviar(destinatario: str, assunto: str, conteudo: str, html: bool = False):
         
-        # 🔥 Agora funciona com .env contendo aspas
         user = os.getenv("EMAIL_API_USER", "").replace('"', '').strip()
         password = os.getenv("EMAIL_API_PASS", "").replace('"', '').strip()
 
